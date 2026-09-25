@@ -68,6 +68,20 @@ body::before{
   pointer-events:none;
 }
 
+/* cursor follow glow */
+.cursor-glow{
+  position:fixed;top:0;left:0;width:500px;height:500px;border-radius:50%;
+  pointer-events:none;z-index:0;
+  background:radial-gradient(circle,var(--accent-soft) 0%,transparent 60%);
+  transform:translate(-50%,-50%);
+  opacity:0;transition:opacity .4s;
+  mix-blend-mode:multiply;
+}
+html[data-theme="dark"] .cursor-glow{mix-blend-mode:screen}
+body.cursor-active .cursor-glow{opacity:.6}
+@media(hover:none){.cursor-glow{display:none}}
+@media (prefers-reduced-motion:reduce){.cursor-glow{display:none}}
+
 /* ============ Nav ============ */
 .nav{
   position:fixed;top:14px;left:50%;transform:translateX(-50%);
@@ -180,6 +194,12 @@ section{padding:80px 0}
   padding:24px;display:flex;flex-direction:column;gap:12px;
   transition:all .3s ease;position:relative;overflow:hidden;
 }
+.card::before{
+  content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(400px circle at var(--mx,50%) var(--my,50%),var(--accent-soft),transparent 60%);
+  opacity:0;transition:opacity .3s;
+}
+.card:hover::before{opacity:1}
 .card:hover{background:var(--bg-card-hover);transform:translateY(-3px);box-shadow:var(--shadow-lg)}
 .card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .card-name{font-size:18px;font-weight:600;letter-spacing:-0.01em;display:flex;align-items:center;gap:8px}
@@ -239,6 +259,7 @@ footer{
 </style>
 </head>
 <body>
+<div class="cursor-glow" id="cursorGlow"></div>
 <!-- ===== Navigation ===== -->
 <nav class="nav">
   <a class="nav-brand" href="#top"><span class="dot"></span>Mikhailtail</a>
@@ -547,6 +568,41 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 
 /* ---------- Footer year ---------- */
 document.getElementById('year').textContent = new Date().getFullYear();
+
+/* ---------- Mouse effects (desktop only) ---------- */
+if (matchMedia('(hover: hover)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const glow = document.getElementById('cursorGlow');
+  let tx = innerWidth/2, ty = innerHeight/2, cx = tx, cy = ty;
+  document.addEventListener('mousemove', e => {
+    tx = e.clientX; ty = e.clientY;
+    document.body.classList.add('cursor-active');
+    // card spotlight
+    const card = e.target.closest('.card');
+    document.querySelectorAll('.card.spot').forEach(c=>{if(c!==card)c.classList.remove('spot')});
+    if (card) {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left)+'px');
+      card.style.setProperty('--my', (e.clientY - r.top)+'px');
+    }
+  });
+  document.addEventListener('mouseleave', ()=>document.body.classList.remove('cursor-active'));
+  (function loop(){
+    cx += (tx-cx)*0.12; cy += (ty-cy)*0.12;
+    glow.style.transform = `translate(${cx-250}px,${cy-250}px)`;
+    requestAnimationFrame(loop);
+  })();
+
+  // magnetic primary buttons
+  document.querySelectorAll('.btn-primary').forEach(btn=>{
+    btn.addEventListener('mousemove', e=>{
+      const r = btn.getBoundingClientRect();
+      const dx = e.clientX - r.left - r.width/2;
+      const dy = e.clientY - r.top - r.height/2;
+      btn.style.transform = `translate(${dx*0.15}px,${dy*0.2}px)`;
+    });
+    btn.addEventListener('mouseleave', ()=>btn.style.transform='');
+  });
+}
 
 /* ---------- Init ---------- */
 applyLang();

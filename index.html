@@ -61,26 +61,52 @@ button{font-family:inherit;cursor:pointer;border:none;background:none;color:inhe
 
 /* ambient background glow */
 body::before{
-  content:'';position:fixed;inset:0;z-index:-1;
+  content:'';position:fixed;inset:0;z-index:-2;
   background:
     radial-gradient(1000px 600px at 80% -10%, var(--accent-soft), transparent 60%),
     radial-gradient(800px 500px at 0% 20%, rgba(120,119,198,0.10), transparent 60%);
   pointer-events:none;
 }
 
-/* cursor follow glow */
-.cursor-glow{
-  position:fixed;top:0;left:0;width:500px;height:500px;border-radius:50%;
-  pointer-events:none;z-index:0;
-  background:radial-gradient(circle,var(--accent-soft) 0%,transparent 60%);
-  transform:translate(-50%,-50%);
-  opacity:0;transition:opacity .4s;
-  mix-blend-mode:multiply;
+/* particle network canvas */
+#bgCanvas{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  width:100%;height:100%;
 }
-html[data-theme="dark"] .cursor-glow{mix-blend-mode:screen}
-body.cursor-active .cursor-glow{opacity:.6}
-@media(hover:none){.cursor-glow{display:none}}
-@media (prefers-reduced-motion:reduce){.cursor-glow{display:none}}
+@media (prefers-reduced-motion:reduce){#bgCanvas{display:none}}
+
+/* custom cursor */
+@media(hover:hover) and (pointer:fine){
+  *{cursor:none !important}
+  .cursor-dot,.cursor-ring{
+    position:fixed;top:0;left:0;pointer-events:none;z-index:9999;
+    border-radius:50%;transform:translate(-50%,-50%);
+  }
+  .cursor-dot{
+    width:8px;height:8px;background:var(--accent);
+  }
+  .cursor-ring{
+    width:36px;height:36px;border:1.5px solid var(--accent);
+    transition:width .25s,height .25s,border-color .25s,background .25s;
+  }
+  .cursor-ring.hover{
+    width:56px;height:56px;background:var(--accent-soft);
+  }
+}
+
+/* desktop pet */
+.pet{
+  position:fixed;left:24px;bottom:24px;z-index:90;
+  width:120px;user-select:none;-webkit-user-select:none;
+  filter:drop-shadow(0 10px 20px rgba(0,0,0,0.15));
+  transition:transform .2s;
+  animation:bob 3s ease-in-out infinite;
+  touch-action:none;
+}
+.pet:hover{transform:scale(1.08)}
+.pet img{width:100%;pointer-events:none}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@media (prefers-reduced-motion:reduce){.pet{animation:none}}
 
 /* ============ Nav ============ */
 .nav{
@@ -259,7 +285,10 @@ footer{
 </style>
 </head>
 <body>
-<div class="cursor-glow" id="cursorGlow"></div>
+<canvas id="bgCanvas"></canvas>
+<div class="cursor-dot" id="cursorDot"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+<div class="pet" id="pet"><img src="assets/pet.png" alt="pet"/></div>
 <!-- ===== Navigation ===== -->
 <nav class="nav">
   <a class="nav-brand" href="#top"><span class="dot"></span>Mikhailtail</a>
@@ -569,40 +598,177 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 /* ---------- Footer year ---------- */
 document.getElementById('year').textContent = new Date().getFullYear();
 
-/* ---------- Mouse effects (desktop only) ---------- */
-if (matchMedia('(hover: hover)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-  const glow = document.getElementById('cursorGlow');
-  let tx = innerWidth/2, ty = innerHeight/2, cx = tx, cy = ty;
-  document.addEventListener('mousemove', e => {
-    tx = e.clientX; ty = e.clientY;
-    document.body.classList.add('cursor-active');
-    // card spotlight
-    const card = e.target.closest('.card');
-    document.querySelectorAll('.card.spot').forEach(c=>{if(c!==card)c.classList.remove('spot')});
-    if (card) {
-      const r = card.getBoundingClientRect();
-      card.style.setProperty('--mx', (e.clientX - r.left)+'px');
-      card.style.setProperty('--my', (e.clientY - r.top)+'px');
-    }
-  });
-  document.addEventListener('mouseleave', ()=>document.body.classList.remove('cursor-active'));
-  (function loop(){
-    cx += (tx-cx)*0.12; cy += (ty-cy)*0.12;
-    glow.style.transform = `translate(${cx-250}px,${cy-250}px)`;
-    requestAnimationFrame(loop);
-  })();
+/* ---------- Particle network background ---------- */
+(function(){
+  const canvas = document.getElementById('bgCanvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, particles = [], bursts = [], mouse = {x:null, y:null};
+  const LINK_DIST = 130, MOUSE_DIST = 160;
 
-  // magnetic primary buttons
-  document.querySelectorAll('.btn-primary').forEach(btn=>{
-    btn.addEventListener('mousemove', e=>{
-      const r = btn.getBoundingClientRect();
-      const dx = e.clientX - r.left - r.width/2;
-      const dy = e.clientY - r.top - r.height/2;
-      btn.style.transform = `translate(${dx*0.15}px,${dy*0.2}px)`;
-    });
-    btn.addEventListener('mouseleave', ()=>btn.style.transform='');
+  function resize(){
+    W = canvas.width = innerWidth * devicePixelRatio;
+    H = canvas.height = innerHeight * devicePixelRatio;
+    canvas.style.width = innerWidth+'px';
+    canvas.style.height = innerHeight+'px';
+    init();
+  }
+  function init(){
+    const count = Math.min(Math.floor(innerWidth*innerHeight/14000), 120);
+    particles = [];
+    for(let i=0;i<count;i++){
+      particles.push({
+        x: Math.random()*W, y: Math.random()*H,
+        vx: (Math.random()-.5)*0.4*devicePixelRatio,
+        vy: (Math.random()-.5)*0.4*devicePixelRatio,
+        r: (Math.random()*1.5+1)*devicePixelRatio
+      });
+    }
+  }
+  function colors(){
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return dark
+      ? {dot:'rgba(10,132,255,0.7)', line:'rgba(10,132,255,0.18)', mouseLine:'rgba(10,132,255,0.35)'}
+      : {dot:'rgba(0,113,227,0.45)', line:'rgba(0,113,227,0.12)', mouseLine:'rgba(0,113,227,0.28)'};
+  }
+  function step(){
+    ctx.clearRect(0,0,W,H);
+    const c = colors();
+    // update + draw dots
+    for(const p of particles){
+      p.x += p.vx; p.y += p.vy;
+      if(p.x<0||p.x>W) p.vx*=-1;
+      if(p.y<0||p.y>H) p.vy*=-1;
+      // mouse repulsion
+      if(mouse.x!==null){
+        const dx = p.x-mouse.x, dy = p.y-mouse.y;
+        const d = Math.hypot(dx,dy);
+        if(d<MOUSE_DIST*devicePixelRatio && d>0){
+          const f = (MOUSE_DIST*devicePixelRatio-d)/(MOUSE_DIST*devicePixelRatio)*0.03;
+          p.x += dx/d*f*10; p.y += dy/d*f*10;
+        }
+      }
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = c.dot;
+      ctx.fill();
+    }
+      // link particles
+    for(let i=0;i<particles.length;i++){
+      for(let j=i+1;j<particles.length;j++){
+        const a=particles[i], b=particles[j];
+        const dx=a.x-b.x, dy=a.y-b.y;
+        const d=Math.hypot(dx,dy);
+        if(d<LINK_DIST*devicePixelRatio){
+          ctx.beginPath();
+          ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+          ctx.strokeStyle=c.line;
+          ctx.lineWidth=devicePixelRatio*0.6;
+          ctx.stroke();
+        }
+      }
+      // link to mouse
+      if(mouse.x!==null){
+        const a=particles[i];
+        const dx=a.x-mouse.x, dy=a.y-mouse.y;
+        const d=Math.hypot(dx,dy);
+        if(d<MOUSE_DIST*devicePixelRatio){
+          ctx.beginPath();
+          ctx.moveTo(a.x,a.y);ctx.lineTo(mouse.x,mouse.y);
+          ctx.strokeStyle=c.mouseLine;
+          ctx.lineWidth=devicePixelRatio*0.8;
+          ctx.stroke();
+        }
+      }
+    }
+    // draw click bursts
+    for(let i=bursts.length-1;i>=0;i--){
+      const b = bursts[i];
+      b.x += b.vx; b.y += b.vy;
+      b.vx *= 0.96; b.vy *= 0.96;
+      b.life -= 0.018;
+      if(b.life<=0){ bursts.splice(i,1); continue; }
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r*b.life, 0, Math.PI*2);
+      ctx.fillStyle = b.color.replace('__A__', (b.life*0.9));
+      ctx.fill();
+    }
+    requestAnimationFrame(step);
+  }
+  function spawnBurst(x, y){
+    const dark = document.documentElement.getAttribute('data-theme')==='dark';
+    const color = dark ? 'rgba(10,132,255,__A__)' : 'rgba(0,113,227,__A__)';
+    const n = 18;
+    for(let i=0;i<n;i++){
+      const angle = (Math.PI*2/n)*i + Math.random()*0.3;
+      const speed = (Math.random()*3+2)*devicePixelRatio;
+      bursts.push({
+        x, y,
+        vx: Math.cos(angle)*speed,
+        vy: Math.sin(angle)*speed,
+        r: (Math.random()*2+1.5)*devicePixelRatio,
+        life: 1,
+        color
+      });
+    }
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('mousemove', e=>{
+    mouse.x = e.clientX*devicePixelRatio;
+    mouse.y = e.clientY*devicePixelRatio;
   });
-}
+  window.addEventListener('mouseout', ()=>{mouse.x=mouse.y=null});
+  window.addEventListener('click', e=>{
+    spawnBurst(e.clientX*devicePixelRatio, e.clientY*devicePixelRatio);
+  });
+
+  // custom cursor follow
+  if(matchMedia('(hover:hover) and (pointer:fine)').matches){
+    const dot = document.getElementById('cursorDot');
+    const ring = document.getElementById('cursorRing');
+    let rx=innerWidth/2, ry=innerHeight/2, mx=rx, my=ry;
+    document.addEventListener('mousemove', e=>{
+      mx = e.clientX; my = e.clientY;
+      dot.style.transform = `translate(${mx}px,${my}px) translate(-50%,-50%)`;
+    });
+    (function loop(){
+      rx += (mx-rx)*0.15;
+      ry += (my-ry)*0.15;
+      ring.style.transform = `translate(${rx}px,${ry}px) translate(-50%,-50%)`;
+      requestAnimationFrame(loop);
+    })();
+    document.querySelectorAll('a,button,.card,.chip,.icon-btn').forEach(el=>{
+      el.addEventListener('mouseenter',()=>ring.classList.add('hover'));
+      el.addEventListener('mouseleave',()=>ring.classList.remove('hover'));
+    });
+  }
+
+  // draggable pet
+  (function(){
+    const pet = document.getElementById('pet');
+    let dragging=false, offX=0, offY=0;
+    function start(x,y){
+      const r = pet.getBoundingClientRect();
+      offX = x-r.left; offY = y-r.top;
+      dragging=true;
+      pet.style.animation='none';
+    }
+    function move(x,y){
+      if(!dragging) return;
+      pet.style.left = (x-offX)+'px';
+      pet.style.top = (y-offY)+'px';
+      pet.style.bottom = 'auto';
+    }
+    function end(){dragging=false; pet.style.animation='';}
+    pet.addEventListener('mousedown', e=>{e.preventDefault(); start(e.clientX,e.clientY);});
+    document.addEventListener('mousemove', e=>move(e.clientX,e.clientY));
+    document.addEventListener('mouseup', end);
+    pet.addEventListener('touchstart', e=>{const t=e.touches[0]; start(t.clientX,t.clientY);},{passive:true});
+    document.addEventListener('touchmove', e=>{const t=e.touches[0]; move(t.clientX,t.clientY);},{passive:true});
+    document.addEventListener('touchend', end);
+  })();
+  resize();
+  step();
+})();
 
 /* ---------- Init ---------- */
 applyLang();

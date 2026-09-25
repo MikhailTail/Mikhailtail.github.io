@@ -624,12 +624,13 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 /* ---------- Footer year ---------- */
 document.getElementById('year').textContent = new Date().getFullYear();
 
-/* ---------- CPU Racer game ---------- */
+/* ---------- CPU Racer game (real memory) ---------- */
 (function(){
   const canvas = document.getElementById('gameCanvas');
   const ctx = canvas.getContext('2d');
   const scoreEl = document.getElementById('gameScore');
-  let W, H, track = [], car = {x:0, y:0, vy:0}, coins = [], score = 0, running = false, gameOver = false;
+  let W, H, memSeries = [], score = 0, running = false, gameOver = false, coins = [];
+  const MAX_POINTS = 200;
 
   function resize(){
     const r = canvas.getBoundingClientRect();
@@ -637,62 +638,75 @@ document.getElementById('year').textContent = new Date().getFullYear();
     canvas.height = 320 * devicePixelRatio;
     W = canvas.width; H = canvas.height;
   }
+  function sampleMem(){
+    if(performance.memory && performance.memory.usedJSHeapSize){
+      return performance.memory.usedJSHeapSize / 1048576; // MB
+    }
+    return 20 + Math.random()*10;
+  }
   function reset(){
-    track = [];
-    for(let i=0;i<400;i++) track.push(150*devicePixelRatio + Math.sin(i*0.08)*40*devicePixelRatio + Math.sin(i*0.03)*30*devicePixelRatio);
-    car = {x:80*devicePixelRatio, y:track[2], vy:0};
+    memSeries = [];
+    for(let i=0;i<MAX_POINTS;i++) memSeries.push(sampleMem());
     coins = [];
-    for(let i=15;i<400;i+=15) coins.push({x:i, got:false});
+    for(let i=20;i<MAX_POINTS;i+=18) coins.push({i, got:false});
     score = 0; scoreEl.textContent = 0;
     gameOver = false; running = true;
   }
-  function trackY(worldX){
-    const i = Math.max(0, Math.min(Math.floor(worldX), track.length-1));
-    return track[i];
-  }
   function update(){
     if(!running) return;
-    car.x += 3*devicePixelRatio;
-    const targetY = trackY(car.x / devicePixelRatio);
-    car.vy += (targetY - car.y) * 0.15;
-    car.vy *= 0.85;
-    car.y += car.vy;
+    memSeries.push(sampleMem());
+    if(memSeries.length > MAX_POINTS) memSeries.shift();
     coins.forEach(c=>{
-      if(!c.got && Math.abs(c.x*devicePixelRatio - car.x) < 25*devicePixelRatio && Math.abs(trackY(c.x)-car.y) < 30*devicePixelRatio){
+      if(!c.got && Math.abs(c.i - memSeries.length+40) < 3){
         c.got = true; score++; scoreEl.textContent = score;
       }
     });
-    if(Math.abs(car.y - targetY) > 80*devicePixelRatio){ running = false; gameOver = true; }
   }
   function draw(){
     ctx.clearRect(0,0,W,H);
+    const min = Math.min(...memSeries), max = Math.max(...memSeries);
+    const range = max-min || 1;
+    const pad = 30*devicePixelRatio;
+    // draw line
     ctx.beginPath();
-    const offset = car.x - 80*devicePixelRatio;
-    for(let i=0;i<track.length;i++){
-      const x = i*devicePixelRatio - offset;
-      if(i===0) ctx.moveTo(x, track[i]);
-      else ctx.lineTo(x, track[i]);
-    }
+    memSeries.forEach((v,i)=>{
+      const x = (i/Math.max(1,memSeries.length-1))*W;
+      const y = H - pad - ((v-min)/range)*(H-pad*2);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
     ctx.lineWidth = 2*devicePixelRatio;
     ctx.stroke();
+    // fill
     ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft');
     ctx.fill();
+    // coins on line
     coins.forEach(c=>{
       if(c.got) return;
-      const x = c.x*devicePixelRatio - offset;
+      if(c.i >= memSeries.length) return;
+      const v = memSeries[c.i];
+      const x = (c.i/Math.max(1,memSeries.length-1))*W;
+      const y = H - pad - ((v-min)/range)*(H-pad*2);
       ctx.beginPath();
-      ctx.arc(x, trackY(c.x)-15*devicePixelRatio, 6*devicePixelRatio, 0, Math.PI*2);
+      ctx.arc(x, y-15*devicePixelRatio, 6*devicePixelRatio, 0, Math.PI*2);
       ctx.fillStyle = '#febc2e';
       ctx.fill();
     });
+    // car = last point on line, glued to it
+    const lastV = memSeries[memSeries.length-1];
+    const carX = W - 30*devicePixelRatio;
+    const carY = H - pad - ((lastV-min)/range)*(H-pad*2);
     ctx.beginPath();
-    ctx.arc(80*devicePixelRatio, car.y, 8*devicePixelRatio, 0, Math.PI*2);
+    ctx.arc(carX, carY, 9*devicePixelRatio, 0, Math.PI*2);
     ctx.fillStyle = '#ff5f57';
     ctx.fill();
+    // text
     ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text');
-    ctx.font = `${16*devicePixelRatio}px -apple-system, sans-serif`;
+    ctx.font = `${13*devicePixelRatio}px -apple-system, sans-serif`;
+    ctx.textAlign = 'left';
+    const curMem = sampleMem().toFixed(1);
+    ctx.fillText(`Memory: ${curMem} MB`, 12*devicePixelRatio, 20*devicePixelRatio);
     ctx.textAlign = 'center';
     if(!running && !gameOver) ctx.fillText('Press SPACE to start', W/2, H/2);
     else if(gameOver){

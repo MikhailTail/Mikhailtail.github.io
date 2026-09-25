@@ -94,25 +94,6 @@ body::before{
   }
 }
 
-/* game section */
-.game-wrap{
-  background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:20px;backdrop-filter:var(--blur);box-shadow:var(--shadow);
-}
-.game-titlebar{
-  display:flex;align-items:center;gap:8px;margin-bottom:12px;
-  font-size:13px;color:var(--text-secondary);
-}
-.game-dot{width:12px;height:12px;border-radius:50%}
-#gameCanvas{
-  width:100%;height:320px;border-radius:var(--radius-sm);
-  background:var(--bg);display:block;
-}
-.game-hint{
-  margin-top:10px;font-size:12.5px;color:var(--text-tertiary);
-  display:flex;gap:16px;flex-wrap:wrap;
-}
-
 /* ============ Nav ============ */
 .nav{
   position:fixed;top:14px;left:50%;transform:translateX(-50%);
@@ -377,28 +358,6 @@ footer{
     </div>
     <div class="tech-grid" id="techGrid"></div>
   </section>
-
-  <!-- ===== Game ===== -->
-  <section id="game" class="wrap reveal">
-    <div class="sec-head">
-      <div class="sec-eyebrow">Minigame</div>
-      <h2 class="sec-title">CPU Racer</h2>
-      <p class="sec-sub">在任务管理器的 CPU 曲线上开车，收集金币。↑/W 加速 · ↓/S 刹车 · 空格 重开。</p>
-    </div>
-    <div class="game-wrap">
-      <div class="game-titlebar">
-        <span class="game-dot" style="background:#ff5f57"></span>
-        <span class="game-dot" style="background:#febc2e"></span>
-        <span class="game-dot" style="background:#28c840"></span>
-        <span style="margin-left:8px">任务管理器 — CPU</span>
-      </div>
-      <canvas id="gameCanvas"></canvas>
-      <div class="game-hint">
-        <span>Score: <b id="gameScore">0</b></span>
-        <span>按空格开始</span>
-      </div>
-    </div>
-  </section>
 </main>
 
 <!-- ===== Footer ===== -->
@@ -624,101 +583,6 @@ document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
 /* ---------- Footer year ---------- */
 document.getElementById('year').textContent = new Date().getFullYear();
 
-/* ---------- CPU Racer game (real memory) ---------- */
-(function(){
-  const canvas = document.getElementById('gameCanvas');
-  const ctx = canvas.getContext('2d');
-  const scoreEl = document.getElementById('gameScore');
-  let W, H, memSeries = [], score = 0, running = false, gameOver = false, coins = [];
-  const MAX_POINTS = 200;
-
-  function resize(){
-    const r = canvas.getBoundingClientRect();
-    canvas.width = r.width * devicePixelRatio;
-    canvas.height = 320 * devicePixelRatio;
-    W = canvas.width; H = canvas.height;
-  }
-  function sampleMem(){
-    if(performance.memory && performance.memory.usedJSHeapSize){
-      return performance.memory.usedJSHeapSize / 1048576; // MB
-    }
-    return 20 + Math.random()*10;
-  }
-  function reset(){
-    memSeries = [];
-    for(let i=0;i<MAX_POINTS;i++) memSeries.push(sampleMem());
-    coins = [];
-    for(let i=20;i<MAX_POINTS;i+=18) coins.push({i, got:false});
-    score = 0; scoreEl.textContent = 0;
-    gameOver = false; running = true;
-  }
-  function update(){
-    if(!running) return;
-    memSeries.push(sampleMem());
-    if(memSeries.length > MAX_POINTS) memSeries.shift();
-    coins.forEach(c=>{
-      if(!c.got && Math.abs(c.i - memSeries.length+40) < 3){
-        c.got = true; score++; scoreEl.textContent = score;
-      }
-    });
-  }
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    const min = Math.min(...memSeries), max = Math.max(...memSeries);
-    const range = max-min || 1;
-    const pad = 30*devicePixelRatio;
-    // draw line
-    ctx.beginPath();
-    memSeries.forEach((v,i)=>{
-      const x = (i/Math.max(1,memSeries.length-1))*W;
-      const y = H - pad - ((v-min)/range)*(H-pad*2);
-      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    });
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent');
-    ctx.lineWidth = 2*devicePixelRatio;
-    ctx.stroke();
-    // fill
-    ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath();
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent-soft');
-    ctx.fill();
-    // coins on line
-    coins.forEach(c=>{
-      if(c.got) return;
-      if(c.i >= memSeries.length) return;
-      const v = memSeries[c.i];
-      const x = (c.i/Math.max(1,memSeries.length-1))*W;
-      const y = H - pad - ((v-min)/range)*(H-pad*2);
-      ctx.beginPath();
-      ctx.arc(x, y-15*devicePixelRatio, 6*devicePixelRatio, 0, Math.PI*2);
-      ctx.fillStyle = '#febc2e';
-      ctx.fill();
-    });
-    // car = last point on line, glued to it
-    const lastV = memSeries[memSeries.length-1];
-    const carX = W - 30*devicePixelRatio;
-    const carY = H - pad - ((lastV-min)/range)*(H-pad*2);
-    ctx.beginPath();
-    ctx.arc(carX, carY, 9*devicePixelRatio, 0, Math.PI*2);
-    ctx.fillStyle = '#ff5f57';
-    ctx.fill();
-    // text
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text');
-    ctx.font = `${13*devicePixelRatio}px -apple-system, sans-serif`;
-    ctx.textAlign = 'left';
-    const curMem = sampleMem().toFixed(1);
-    ctx.fillText(`Memory: ${curMem} MB`, 12*devicePixelRatio, 20*devicePixelRatio);
-    ctx.textAlign = 'center';
-    if(!running && !gameOver) ctx.fillText('Press SPACE to start', W/2, H/2);
-    else if(gameOver){
-      ctx.fillText('GAME OVER — Score: '+score, W/2, H/2);
-      ctx.fillText('Press SPACE to restart', W/2, H/2+24*devicePixelRatio);
-    }
-  }
-  function loop(){ update(); draw(); requestAnimationFrame(loop); }
-  window.addEventListener('resize', resize);
-  document.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); reset(); } });
-  resize(); loop();
-})();
 
 /* ---------- Particle network background ---------- */
 (function(){

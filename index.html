@@ -728,30 +728,6 @@ document.getElementById('year').textContent = new Date().getFullYear();
     });
   }
 
-  // draggable pet
-  (function(){
-    const pet = document.getElementById('pet');
-    let dragging=false, offX=0, offY=0;
-    function start(x,y){
-      const r = pet.getBoundingClientRect();
-      offX = x-r.left; offY = y-r.top;
-      dragging=true;
-      pet.style.animation='none';
-    }
-    function move(x,y){
-      if(!dragging) return;
-      pet.style.left = (x-offX)+'px';
-      pet.style.top = (y-offY)+'px';
-      pet.style.bottom = 'auto';
-    }
-    function end(){dragging=false; pet.style.animation='';}
-    pet.addEventListener('mousedown', e=>{e.preventDefault(); start(e.clientX,e.clientY);});
-    document.addEventListener('mousemove', e=>move(e.clientX,e.clientY));
-    document.addEventListener('mouseup', end);
-    pet.addEventListener('touchstart', e=>{const t=e.touches[0]; start(t.clientX,t.clientY);},{passive:true});
-    document.addEventListener('touchmove', e=>{const t=e.touches[0]; move(t.clientX,t.clientY);},{passive:true});
-    document.addEventListener('touchend', end);
-  })();
   resize();
   step();
 })();
